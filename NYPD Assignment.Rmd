@@ -1,0 +1,138 @@
+---
+title: "Untitled"
+author: 
+date: '2022-07-04'
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r echo=FALSE, message=FALSE}
+library(tidyverse)
+```
+
+### **NYPD ASSIGNMENT**
+
+##  Project Files and Importing Data
+
+For the purpose of this assignment I am going to use data file located on data.gov website titled "NYPD Shooting Incident Data (Historic)" This document contains information about shooting incidents in the city of New York from year 2006 until the end of the year 2021.
+
+Throughout this document I will be using tidyverse library
+
+```{r}
+shootings <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+```
+
+## Tidying and Transforming Data
+
+Straight away we notice that date is a character vector and not a date object, so we can mutate it using lubridate library.
+
+```{r message=FALSE}
+library(lubridate)
+shootings <- shootings %>% mutate(OCCUR_DATE = lubridate::mdy(OCCUR_DATE))
+```
+
+In order to simplify our data set we can remove information we will not use in our analysis, such as INCIDENT_KEY, JURISDICTION_CODE, X_COORD_CD, Y_COORD_CD, Latitude, Longitude and Lon_Lat.
+
+```{r}
+shootings <- select(shootings, -c(INCIDENT_KEY, JURISDICTION_CODE, X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+```
+
+On further inspection we notice that there are many NA values in various columns, however in this case I have decided to leave them there, as they simply might suggest that not all information is available to NYPD for that particular shooting incident (e.g. perpetrator is not known, therefore gender, race or age group columns have NA value). 
+
+Additionally I decided to organize my data by the date.
+```{r}
+shootings <- shootings %>% arrange(ymd(shootings$OCCUR_DATE))
+```
+
+## Visualizing, Analyzing and Modeling Data
+
+We can look at the total number of cases in different areas of NY using table() funcition.
+```{r}
+table(shootings$BORO)
+```
+
+We can notice that NYPD uses 5 different areas in their statistics:
+
+- Manhattan 
+- Brooklyn
+- Bronx
+- Queens
+- Staten Island
+
+First of all I would like to look at the information about number of incidents and their proportion as per main five boroughs of NYC.
+
+```{r}
+borough <- shootings %>%
+group_by(BORO) %>%
+summarize(cases = n())
+
+# Draw a bar chart using our data
+borough %>%
+ggplot(aes(x = BORO, y = cases)) +
+geom_bar(stat = "identity", fill = "blue") +
+theme_classic() +
+xlab("Borough") +
+ylab("Number of Shootings")
+
+```
+
+It is obvious from our table that most of the shootings happen in the borough of Brooklyn, followed by Bronx. It would require further study to find out what is the reason behind this (most obvious would be comparing amount of shootings with the population numbers, population density and many other factors).
+
+# Shootings by months in Boroughs
+
+For my own analysis I have decided to look at each of these areas and notice any patterns. Since we are dealing with a large time frame, I grouped shooting incidents by month.
+
+```{r}
+shootings$new <- c(1)
+Bronx <- subset(shootings, BORO == 'BRONX') %>%
+group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+Brooklyn <- subset(shootings, BORO == 'BROOKLYN') %>%
+group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+Manhattan <- subset(shootings, BORO == 'MANHATTAN') %>%
+group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+Queens <- subset(shootings, BORO == 'QUEENS') %>%
+group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+Staten_Island <- subset(shootings, BORO == 'STATEN ISLAND') %>%
+group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+```
+
+
+In order to obtain a clearer plot, I decided to have look at two areas with the highest amount of shootings *Brooklyn* and *Bronx*. 
+
+```{r}
+plot(Brooklyn, type = "l", col = 2)
+lines(Bronx, type = "l", lty = 2, col = 3)
+```
+
+
+
+We can see that Brooklyn has by far the highest amount of shooting incidents, followed by Bronx. When we plot our monthly summaries for both of these areas onto the same graph, it is interesting to notice that both of these areas have peaks of incidents matching, i.e. incidents peaking during the same time and equally "incidents lows" occur more or less at the same time frame.
+Another interesting fact to notice is that there appears to be certain level of seasonality and pattern into highs and lows (e.g. there are 5 high peaks and 5 lows in each 5 year period). However that would require further study and analysis to establish what might be the underlying reason behind this observation.
+
+
+Finally we can look at the visualization of total number of shooting incidents as per NYPD.
+```{r}
+Total <- shootings %>% group_by(month = lubridate::floor_date(OCCUR_DATE, 'month')) %>%
+summarize(sum_of_cases = sum(new))
+```
+```{r}
+Total %>%
+ggplot(aes(x = month, y = sum_of_cases)) +
+geom_line(aes(color = "sum_of_cases")) +
+geom_point(aes(color = "sum_of_cases"))
+```
+
+## Bias Identification
+
+My personal bias for this particular assignment could be the fact, that I am not US citizen and I do not live in the USA, therefore I do not know much about situation in NYC or USA in general, except the information that I receive from media. In order to understand fully and be able to analyze these information one needs to have better information about sociological background of NYC, current policies and issues that city of New York might be facing.
+For this specific reason, it is important that I stick to this data presented here and I do not transfer my personal opinion or limited information into the analysis.
+
+```{r}
+sessionInfo()
+```
+
