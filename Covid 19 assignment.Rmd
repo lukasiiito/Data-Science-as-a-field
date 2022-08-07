@@ -1,0 +1,203 @@
+---
+title: "COVID assignment"
+author:
+date: '2022-07-08'
+output:
+  pdf_document: default
+  html_document: default
+---
+## Project Files and Importing Data
+
+First of all we need to start with finding an appropriate source of data and do our research to establish if the data is suitable for our research. It is of crucial importance to use reliable, credible and un-biased source for any kind of analysis we are about to perform.
+
+As suggested during the lectures, I have used the same data from Johns Hopkins located on github and started with reading them in into the R Studio.
+
+Throughout the assignment I will use two R libraries:
+
+```{r message=FALSE}
+library(tidyverse)
+library(lubridate)
+```
+
+```{r message=FALSE}
+## Read in the data from github
+
+global_cases <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv")
+global_deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_global.csv")
+US_cases <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_US.csv")
+US_deaths <- read_csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_deaths_US.csv")
+
+
+```
+
+## Tidying and Transforming Data
+
+When we have our data read in, we can proceed with cleaning and tidying them up. We will remove information that we do not need for the purpose of our analysis (such as latitude, longitude) and just like in video putting dates, deaths and cases in their own columns.
+``` {r message=FALSE}
+global_cases <- global_cases %>%
+pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), names_to = "date", values_to = "cases") %>%
+select(-c(Lat, Long))
+global_deaths <- global_deaths %>%
+pivot_longer(cols = -c('Province/State', 'Country/Region', Lat, Long), names_to = "date", values_to = "deaths") %>%
+select(-c(Lat, Long))
+```
+
+Afterwards we have a further look at our dataset and we can continue with additional tidying up. For ease of analysis, we can join global_cases data set with global_deaths dataset. As well we can notice that date column is a "character" vector, so we can as well mutate that from character to date object.
+
+``` {r echo = FALSE, message = FALSE}
+library(lubridate)
+```
+```{r}
+global <- global_cases %>%
+full_join(global_deaths) %>%
+rename(Country_Region = 'Country/Region', Province_State = 'Province/State') %>%
+mutate(date = mdy(date))
+```
+
+To help us with our analysis we can filter out all "zero" cases.
+``` {r}
+global <- global %>% filter(cases > 0)
+```
+
+Additionally we can see that our data set contains two separate columns:
+
+- Province_State
+- Country_Region
+
+We can combine those into one for ease of analysis.
+
+```{r}
+global <- global %>%
+unite ("Combined_Key", c(Province_State, Country_Region), sep = "," , na.rm = TRUE, remove = FALSE)
+```
+
+To help with our analysis we can as well add to our data set information about total population in our countries. We will use data from Johns Hopkins Universit in github and join it with our existing global dataset.
+
+```{r}
+uid_lookup_url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/UID_ISO_FIPS_LookUp_Table.csv"
+uid <- read_csv(uid_lookup_url) %>%
+select(-c(Lat, Long_, Combined_Key, code3, iso2, iso3, Admin2))
+global <- global %>%
+left_join(uid, by = c("Province_State", "Country_Region")) %>%
+select(-c(UID,FIPS)) %>%
+select(Province_State, Country_Region, date, cases, deaths, Population, Combined_Key)
+```
+
+After we have tidied up our global data, we can move on to our US data, where we will perform more or less the same tasks as we did with previous data sets.
+
+```{r}
+US_cases <- US_cases %>%
+pivot_longer(cols = -(UID:Combined_Key), names_to = "date" , values_to = "cases") %>%
+select(Admin2:cases) %>%
+mutate(date = mdy(date)) %>%
+select(-c(Lat, Long_))
+```
+```{r message=FALSE}
+US_deaths <- US_deaths %>%
+pivot_longer(cols = -(UID:Combined_Key), names_to = "date" , values_to = "deaths") %>%
+select(Admin2:deaths) %>%
+mutate(date = mdy(date)) %>%
+select(-c(Lat, Long_))
+```
+
+Finally we can join our two data sets together:
+```{r}
+US <- US_cases %>%
+full_join(US_deaths)
+```
+
+And as a matter of consistency we will filter out zero cases even in our US data set.
+
+```{r}
+US <- US %>% filter (cases > 0)
+```
+
+We can look now at the summary for both of our data sets:
+
+```{r}
+summary(global)
+summary(US)
+```
+
+
+
+Lastly I have decided to work further with the global data set, therefore I will add extra column that shows daily individual increases in cases and deaths to our global dataset and new column that shows number of deaths per million of population.
+
+```{r}
+world <- global %>% mutate(deaths_per_mill = deaths *1000000/ Population)
+world <- world %>%
+mutate(new_cases = cases - lag(cases), new_deaths = deaths - lag(deaths))
+```
+
+## Analyzing and Modeling data
+
+I have decided to have a further into the COVID situation in my home country Slovakia, therefore I will create a new data set called "Slovakia" from our world dataset.
+
+```{r}
+Slovakia <- world %>% filter(Country_Region == "Slovakia")
+```
+
+Naturally, first of all I would like to look at the progression of COVID19 infections and related deaths in the country througout the pandemic starting early months of 2020 till the date.
+
+```{r message=FALSE}
+Slovakia %>%
+ggplot(aes(x=date, y=cases)) +
+geom_line(aes(color = "cases")) +
+geom_line(aes(y=deaths, color = "deaths")) +
+scale_y_log10() +
+labs(title = "COVID19 in Slovakia")
+```
+
+Here we can clearly see rapid growth in infections during early stages of the pandemic, followed by another sharp rise in infections during the winter of 2020/2021. From this graph however, we cannot clearly see the waves and pattern of Covid pandemic in Slovakia, as this graph is using cumulative totals, therefore for better visualization we can have a look at the graph of new cases and new deaths, that displays in much better manner the dynamics of the pandemic in the country.
+
+```{r message=FALSE}
+Slovakia %>%
+filter(new_cases > 0, new_deaths > 0) %>%
+ggplot(aes(x=date, y=new_cases)) +
+geom_point(aes(color = "new cases")) +
+geom_line(aes(color = "new cases")) +
+geom_point(aes(y=new_deaths, color = "new deaths")) +
+geom_line(aes(y=new_deaths, color = "new deaths")) +
+scale_y_log10() +
+labs(title = "COVID19 in Slovakia")
+```
+
+This second graph is much better visualization of the covid related situation in Slovakia, showing peaks through both winters 2020/21 and 2021/22, with decrease in number of infections (and deaths) during the summer periods. Naturally both graphs (new cases and new deaths) show similar waves and pattern, as naturally with higher number of cases there is higher number of related deaths.
+
+Since the world and scientfic community learns more and more about COVID19, I was interested to see how my country is doing in terms of covid related deaths per one new case of infections.
+My initial idea was to see, since scientists and doctors learn more about this infection and ways how to treat it, if number of deaths per confirmed case of COVID19 infection is decreasing.
+
+I decided to use two different methods: Linear model and LOESS regression.
+```{r message=FALSE}
+Slovakia %>%
+filter(new_deaths > 0, new_cases > 0) %>%
+ggplot(aes(x=date, y= new_deaths/new_cases)) +
+geom_point(aes(color="Deaths per case")) +
+geom_smooth(method=lm) +
+scale_y_log10() +
+labs(x= "Date", y = "Deaths per infection case", title = "COVID19 deaths per confirmed infection case with Linear Model")
+```
+
+On this graph we can see that our model says that number of deaths per covid cases is consistently decreasing since the start of the pandemic. Since this is very simple model, I wanted to see what would be the result using more advanced model, in this case LOESS regression.
+
+```{r message=FALSE}
+Slovakia %>%
+filter(new_deaths > 0, new_cases > 0) %>%
+ggplot(aes(x=date, y= new_deaths/new_cases)) +
+geom_point(aes(color = "Deaths per case")) +
+geom_smooth(color = "blue", fill = "blue") +
+scale_y_log10() +
+labs(x="Date", y="Deaths per case", title = "COVID19 related deaths per confirmed infection case with LOESS regression")
+```
+
+In this graph we achieved clearer visualization of our data. Since the start of the pandemic we can see that number of deaths per each confirmed case of COVID19 infections is in general decreasing (as suggested by the previous linear model), however for the period starting shortly prior to downloading this dataset, we can see slight upward trajectory of the blue model line. 
+We cannot speculate about possible reasons why it is so. For further clarification we would need to do further research and/or consult specialists in related fields.
+
+## Bias Identification
+
+My personal bias for this (still) highly discussed topic would be the fact that I have no medical background, nor do I have knowledge from the fields of microbiology or virology. All the information I have about COVID19 comes from media or from the broadcasts of local health authorities in the place live. In order to be able to fully and correctly analyse this data, one needs better knowledge of above mentioned fields or close cooperation with professionals working in those areas.
+Therefore it is important that I stick to the data presented here and I do not transfer my personal opinion or limited information into the analysis
+
+```{r}
+sessionInfo()
+```
